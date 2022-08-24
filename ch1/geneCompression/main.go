@@ -2,62 +2,56 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/big"
 	"strings"
-)
 
-// Reverse reverses the given string.
-func Reverse(s string) string {
-	r := []rune(s)
-	for i, j := 0, len(r)-1; i < len(r)/2; i, j = i+1, j-1 {
-		r[i], r[j] = r[j], r[i]
-	}
-	return string(r)
-}
+	"github.com/karanveersp/utils-go/strfuncs"
+)
 
 // CompressedGene models a compressed format gene sequence
 type CompressedGene struct {
-	bitString *big.Int
+	bits *big.Int
 }
 
-func (c *CompressedGene) compress(gene string) {
-	c.bitString = big.NewInt(1) // sentinel value
+func (c *CompressedGene) compress(gene string) error {
+	c.bits = big.NewInt(1) // sentinel value
 
-	// fmt.Printf("Length of string %d\n", len(gene))
 	for _, nucleotide := range strings.ToUpper(gene) {
-		c.bitString = c.bitString.Lsh(c.bitString, 2)
+		c.bits.Lsh(c.bits, 2)
 		switch nucleotide {
 		case 'A':
-			c.bitString = c.bitString.Or(c.bitString, big.NewInt(0b00))
+			c.bits.Or(c.bits, big.NewInt(0b00))
 		case 'C':
-			c.bitString = c.bitString.Or(c.bitString, big.NewInt(0b01))
+			c.bits.Or(c.bits, big.NewInt(0b01))
 		case 'G':
-			c.bitString = c.bitString.Or(c.bitString, big.NewInt(0b10))
+			c.bits.Or(c.bits, big.NewInt(0b10))
 		case 'T':
-			c.bitString = c.bitString.Or(c.bitString, big.NewInt(0b11))
+			c.bits.Or(c.bits, big.NewInt(0b11))
 		default:
-			panic(fmt.Errorf("Invalid nucleotide: %c", nucleotide))
+			return fmt.Errorf("Invalid nucleotide: %c", nucleotide)
 		}
 	}
+	return nil
 }
 
 // Decompress expands the compressed bit sequence into
 // a string of nucleotides A,C,G,T.
-func (c *CompressedGene) Decompress() string {
+func (c *CompressedGene) Decompress() (string, error) {
 	gene := ""
 
 	// bitlen - 1 to ignore sentinel value
-	for i := uint(0); i < uint(c.bitString.BitLen()-1); i += 2 {
+	for i := uint(0); i < uint(c.bits.BitLen()-1); i += 2 {
 		rightShifted := &big.Int{} // local value to not mutate the original
-		rightShifted.Rsh(c.bitString, i)
+		rightShifted.Rsh(c.bits, i)
 		// fmt.Print("Right shifted: ")
 		// display(rightShifted)
 
 		// Getting the two, rightmost bits.
-		bits := (rightShifted.And(rightShifted, big.NewInt(0b11))).Uint64()
+		rightBits := (rightShifted.And(rightShifted, big.NewInt(0b11))).Uint64()
 		// fmt.Print("Bits: ")
 		// display(big.NewInt(int64(bits)))
-		switch bits {
+		switch rightBits {
 		case 0b00:
 			gene = gene + "A"
 		case 0b01:
@@ -67,23 +61,27 @@ func (c *CompressedGene) Decompress() string {
 		case 0b11:
 			gene = gene + "T"
 		default:
-			panic(fmt.Errorf("Invalid bits: %d", bits))
+			return "", fmt.Errorf("Invalid bits: %d", rightBits)
 		}
 		// fmt.Println(gene)
 	}
-	return Reverse(gene)
+	return strfuncs.Reverse(gene), nil
 }
 
 func (c *CompressedGene) String() string {
-	return c.Decompress()
+	s, _ := c.Decompress()
+	return s
 }
 
 // NewCompressedGene compresses the given gene string into
 // a binary string of 0s and 1s
-func NewCompressedGene(gene string) *CompressedGene {
+func NewCompressedGene(gene string) (*CompressedGene, error) {
 	c := CompressedGene{}
-	c.compress(gene)
-	return &c
+	err := c.compress(gene)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 
 func display(n *big.Int) {
@@ -92,9 +90,15 @@ func display(n *big.Int) {
 
 func main() {
 	s := strings.Repeat("TAGGGATTAACCGTTATATATATATAGCCATGGATCGATTATATAGGGATTAACCGTTATATATATATAGCCATGGATCGATTATA", 100)
-	c := NewCompressedGene(s)
+	c, err := NewCompressedGene(s)
+	if err != nil {
+		log.Fatalln(err)
+	}
 	fmt.Printf("String bytes: %d\n", len([]byte(s)))
-	fmt.Printf("Compressed bytes: %d\n", len(c.bitString.Bytes()))
-	d := c.String()
-	fmt.Println(d == s)
+	fmt.Printf("Compressed bytes: %d\n", len(c.bits.Bytes()))
+	d, err := c.Decompress()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("Matches original gene: %v\n", d == s)
 }
